@@ -1,63 +1,120 @@
-name: CamCraft source recovery
+name: CamCraft Windows executables
+
 on:
   push:
     branches: [main]
   workflow_dispatch:
+
 permissions:
   contents: write
+
+concurrency:
+  group: camcraft-windows-release
+  cancel-in-progress: false
+
 jobs:
-  recover:
-    runs-on: ubuntu-latest
+  windows:
+    runs-on: windows-2022
+    timeout-minutes: 90
     steps:
       - uses: actions/checkout@v4
-      - name: Recover complete files from verified upload prefix
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12.10'
+          architecture: x64
+      - name: Complete verified source import
+        if: ${{ hashFiles('.bootstrap/tail-00.b64') != '' }}
         shell: python
         run: |
-          import base64, hashlib, io, json, lzma, pathlib, subprocess, tarfile
-          shas = '''ae6f814a732b43561fc2d81f054e601e240e890c c1ac2839f7a39860877c26b271f28ea279c02572 36a9a2d96f4494ffec51e04e6cb624b497ff48ce adb6a7013e8cebc810130409cb21ad3020c5994c 77449702bb515a23f0db36af9eaa36344ac2b06a f10cec6485250ce6579fb0b2112d62b32261b133 3512663972e00e90285ef43aa67052a96e56da6d c27a784979ed577b5e04e7aaf32861aef4d0ee0f 1cdae5f71bb89739f24513e8f53f00e649ce3de9 5dc63c8b3f0b079b075c24da3fa057a235310245 c2b4a0b21c67556823c6996a66752587da928f26'''.split()
+          import base64, hashlib, io, lzma, pathlib, subprocess, tarfile
+          shas = '''b618b1813cf5a580cf3b3d88935b98d36163a7a5 d9df6f172f1e0656dd040e468bd26c8f8eb6f3f4 f2a47abe1ae4a8e326b12abc1e6ee795a048693b 1bc9be33720341ad74e03dbb806e7a63c4721456 b18cdb94cc63856460c5d50d9b99f4cc9bd8ee67 c5008ed9d34cdafc42002162ec296a3a22eb50c0 8fca200135d68b2aa5abfe788bf13c492e49887a dc8400fa71d8c8f4973330bd2644bb4be4e8039e 551e95f8f4b8e73f0821391a1bfbe6f94be18348 06292d3972ef459617ca210804e2f132b281e58d'''.split()
           parts = []
           for index, sha in enumerate(shas):
-              part = pathlib.Path(f'.bootstrap/source-{index:02d}.b64').read_bytes()
+              part = pathlib.Path(f'.bootstrap/tail-{index:02d}.b64').read_bytes()
+              assert len(part) <= 20000
               assert hashlib.sha1(b'blob ' + str(len(part)).encode() + b'\0' + part).hexdigest() == sha
               parts.append(part)
-          prefix = base64.b64decode(b''.join(parts), validate=True)
-          dec = lzma.LZMADecompressor()
-          raw = dec.decompress(prefix)
-          print(f'Recovered {len(raw)} uncompressed bytes. Archive complete: {dec.eof}')
+          archive = base64.b64decode(b''.join(parts), validate=True)
+          assert len(archive) == 76456
+          assert hashlib.sha256(archive).hexdigest() == '7bb831165291b118f8ed42dc137b71c3450357de57e055cb6749b762549c6e48'
+          raw = lzma.decompress(archive)
+          assert len(raw) == 327680
           root = pathlib.Path.cwd().resolve()
-          files = {}
           with tarfile.open(fileobj=io.BytesIO(raw), mode='r:') as tar:
-              while True:
-                  try:
-                      member = tar.next()
-                      if member is None:
-                          break
-                      if member.offset_data + member.size > len(raw):
-                          print('Incomplete final entry, not imported:', member.name)
-                          break
-                      path = pathlib.PurePosixPath(member.name)
-                      assert member.isfile() and not path.is_absolute() and '..' not in path.parts and '\\' not in member.name
-                      assert path.parts[0] not in ('.git', '.github', '.bootstrap', 'data')
-                      assert path.parts[0] != 'models' or member.name in ('models/README.md','models/manifest.json')
-                      data = tar.extractfile(member).read()
-                      assert len(data) == member.size and len(data) < 2000000
-                      dest = root.joinpath(*path.parts)
-                      dest.parent.mkdir(parents=True, exist_ok=True)
-                      dest.write_bytes(data)
-                      files[member.name] = hashlib.sha256(data).hexdigest()
-                      print('Recovered:', member.name)
-                  except tarfile.ReadError:
-                      break
-          pathlib.Path('.bootstrap/recovery.json').write_text(json.dumps({'complete': dec.eof, 'files': files}, indent=2), encoding='utf-8')
-          print(f'Recovered {len(files)} complete files. This is source recovery, NOT a release approval.')
-          subprocess.run(['git','config','user.name','github-actions[bot]'],check=True)
-          subprocess.run(['git','config','user.email','41898282+github-actions[bot]@users.noreply.github.com'],check=True)
-          subprocess.run(['git','add','-A'],check=True)
-          subprocess.run(['git','commit','-m','chore: recover complete source files from interrupted transfer'],check=True)
-          subprocess.run(['git','push','origin','HEAD:main'],check=True)
-          subprocess.run(['git','archive','--format=zip','-o','/tmp/CamCraft-recovered-source.zip','HEAD'],check=True)
-      - uses: actions/upload-artifact@v4
+              members = tar.getmembers()
+              assert len(members) == 38
+              for member in members:
+                  path = pathlib.PurePosixPath(member.name)
+                  assert member.isfile() and not path.is_absolute() and '..' not in path.parts and '\\' not in member.name
+                  assert path.parts[0] in ('vision_app', 'vision_foundation', 'tests', 'MANIFEST.sha256.json')
+                  data = tar.extractfile(member).read()
+                  assert len(data) == member.size and len(data) < 2000000
+                  dest = root.joinpath(*path.parts)
+                  dest.parent.mkdir(parents=True, exist_ok=True)
+                  dest.write_bytes(data)
+          print('PASS: verified remaining source restored, including runtime, self-test and capture modules')
+          for args in (
+              ['git','config','user.name','github-actions[bot]'],
+              ['git','config','user.email','41898282+github-actions[bot]@users.noreply.github.com'],
+              ['git','rm','-r','-f','.bootstrap'],
+              ['git','add','-A'],
+              ['git','commit','-m','feat: complete CamCraft 4.2.0 source and offline Windows runtime'],
+              ['git','push','origin','HEAD:main'],
+          ):
+              subprocess.run(args, check=True)
+      - name: Archive complete source snapshot
+        shell: pwsh
+        run: |
+          git archive --format=zip -o "$env:RUNNER_TEMP/CamCraft-source.zip" HEAD
+          if ($LASTEXITCODE -ne 0) { throw 'Source archive failed' }
+      - name: Preserve complete source snapshot
+        uses: actions/upload-artifact@v4
         with:
-          name: CamCraft-recovered-source
-          path: /tmp/CamCraft-recovered-source.zip
+          name: CamCraft-source
+          path: ${{ runner.temp }}/CamCraft-source.zip
           if-no-files-found: error
+      - name: Prepare isolated build environment
+        shell: pwsh
+        run: |
+          python -m venv .build-venv
+          if ($LASTEXITCODE -ne 0) { throw 'Could not create build environment' }
+          & .\.build-venv\Scripts\python.exe -m pip install --disable-pip-version-check --only-binary=:all: -r packaging\requirements-build.txt
+          if ($LASTEXITCODE -ne 0) { throw 'Dependency installation failed' }
+          & .\.build-venv\Scripts\python.exe -m pip check
+          if ($LASTEXITCODE -ne 0) { throw 'Dependency check failed' }
+      - name: Build and validate portable EXE and Windows Setup
+        shell: pwsh
+        run: |
+          & .\packaging\build_windows.ps1 -PythonPath (Join-Path $PWD '.build-venv\Scripts\python.exe')
+          if ($LASTEXITCODE -ne 0) { throw 'Windows distribution validation failed' }
+      - name: Preserve validation reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: camcraft-windows-validation
+          path: |
+            build/reports/**
+            .build_assets/**/reports/**
+            release/*validation*.zip
+          if-no-files-found: warn
+          include-hidden-files: true
+      - name: Preserve verified distributions
+        uses: actions/upload-artifact@v4
+        with:
+          name: CamCraft-Windows-x64
+          path: release/*
+          if-no-files-found: error
+      - name: Publish verified release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $version = (& .\.build-venv\Scripts\python.exe -c 'from vision_app.runtime import VERSION; print(VERSION)').Trim()
+          if ($LASTEXITCODE -ne 0 -or $version -notmatch '^\d+\.\d+\.\d+$') { throw 'Invalid version' }
+          $portable = Join-Path $PWD "release\CamCraft-Portable-$version-x64.exe"
+          $setup = Join-Path $PWD "release\CamCraft-Setup-$version-x64.exe"
+          if (!(Test-Path $portable) -or !(Test-Path $setup)) { throw 'Both verified executables are required' }
+          $assets = @(Get-ChildItem release -File | ForEach-Object { $_.FullName })
+          $commit = (git rev-parse HEAD).Trim()
+          gh release create "v$version" @assets --repo DragonBlack18/CamCraft --target $commit --title "CamCraft $version — Windows x64" --notes-file packaging/release_notes.md
+          if ($LASTEXITCODE -ne 0) { throw 'Release publication failed' }

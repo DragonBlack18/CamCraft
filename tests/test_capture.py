@@ -70,7 +70,8 @@ def test_external_kill_recovery(store):
 
 
 def test_repeated_start_stop(store):
-    session=CameraSession(demo_config(),store)
+    # This test checks idempotency, not startup deadlines. Allow slow CI spawn.
+    session=CameraSession(demo_config().model_copy(update={'open_timeout_s': 8}),store)
     for _ in range(3):
         session.start();session.start()
         wait_for(lambda:session.snapshot()['fresh'])

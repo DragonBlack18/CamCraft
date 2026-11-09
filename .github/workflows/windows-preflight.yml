@@ -1,0 +1,37 @@
+name: Windows dependency preflight
+on:
+  push:
+    paths: ['.github/workflows/windows-preflight.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  preflight:
+    runs-on: windows-2022
+    timeout-minutes: 15
+    steps:
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          architecture: x64
+      - name: Verify runtime packages and freezer in clean environment
+        shell: pwsh
+        run: |
+          python -m venv .venv
+          & .\.venv\Scripts\python.exe -m pip install --disable-pip-version-check --only-binary=:all: opencv-python-headless==4.13.0.92 numpy==2.3.5 scipy==1.17.0 Pillow==12.3.0 pydantic==2.13.5 pydantic_core==2.46.5 annotated-types==0.8.0 typing_extensions==4.16.0 typing-inspection==0.4.4 psutil==7.2.2 pyinstaller==6.22.3
+          if ($LASTEXITCODE -ne 0) { throw 'Dependency preflight failed; no executables published.' }
+          & .\.venv\Scripts\python.exe -m pip check
+          if ($LASTEXITCODE -ne 0) { throw 'Dependency consistency failed.' }
+          & .\.venv\Scripts\python.exe -c "import cv2, tkinter, numpy, scipy, PIL, pydantic, psutil; print('PASS imports', cv2.__version__)"
+          if ($LASTEXITCODE -ne 0) { throw 'Native imports failed.' }
+      - name: Verify official model and available installer compiler
+        shell: pwsh
+        run: |
+          $url = 'https://media.githubusercontent.com/media/opencv/opencv_zoo/main/models/object_detection_yolox/object_detection_yolox_2022nov.onnx'
+          Invoke-WebRequest $url -OutFile model.onnx
+          $hash = (Get-FileHash model.onnx -Algorithm SHA256).Hash.ToLowerInvariant()
+          if ($hash -ne 'c5c2d13e59ae883e6af3b45daea64af4833a4951c92d116ec270d9ddbe998063') { throw 'Model hash mismatch' }
+          & .\.venv\Scripts\python.exe -c "import cv2,numpy as np; cv2.setNumThreads(2); n=cv2.dnn.readNetFromONNX('model.onnx'); n.setInput(np.full((1,3,640,640),114,np.float32)); o=n.forward(); print('PASS neural inference',o.shape); assert o.shape==(1,8400,85)"
+          if ($LASTEXITCODE -ne 0) { throw 'Real neural inference failed.' }
+          $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
+          if (Test-Path $iscc) { & $iscc /? | Select-Object -First 8 } else { Write-Output 'Inno Setup compiler must be provisioned by build workflow.' }

@@ -5,6 +5,7 @@ uses a neutral image and synthetic video and never accesses a physical camera.
 """
 from __future__ import annotations
 import argparse
+from contextlib import ExitStack
 import importlib.metadata
 import json
 import os
@@ -15,6 +16,21 @@ import sys
 import tempfile
 import time
 import traceback
+
+
+def _observe_current_result(service, seen: set) -> None:
+    """Record only fresh, accepted neural results, not a lucky final sample.
+
+    `latest()` intentionally hides old results. A CPU worker can be productive
+    while between results at the exact end of an arbitrary observation window.
+    Keep freshness checks enabled and require two distinct observed results.
+    """
+    result = service.latest()
+    if result is None:
+        return
+    if result.metadata.get('engine') != 'yolox':
+        raise RuntimeError('Package test received a non-neural result')
+    seen.add((result.metadata.get('session'), result.id))
 
 
 def main(argv=None) -> int:
@@ -36,6 +52,21 @@ def main(argv=None) -> int:
     }
     began = time.monotonic()
     root = app = window = None
+
+    def cleanup_runtime():
+        nonlocal root, app
+        if window is not None:
+            window.closed = True
+        try:
+            if root is not None:
+                try:
+                    root.destroy()
+                finally:
+                    root = None
+        finally:
+            if app is not None:
+                app.close()
+                app = None
     # urllib is not used by the test. Reject any accidental Python networking;
     # the real model has to be present in the distribution and pass its hash.
     import socket
@@ -64,8 +95,11 @@ def main(argv=None) -> int:
         report['checks']['real_neural_inference'] = {'passed': True, 'seconds': time.monotonic()-start,
                                                      'predictions_on_neutral_image': len(predictions)}
         del detector
-        with tempfile.TemporaryDirectory(prefix='CamCraft self test ') as scratch:
-            scratch = Path(scratch)
+        with ExitStack() as resources:
+            scratch = Path(resources.enter_context(tempfile.TemporaryDirectory(prefix='CamCraft self test ')))
+            # LIFO cleanup closes the database/processes BEFORE deleting their
+            # working directory. Windows refuses to remove files still in use.
+            resources.callback(cleanup_runtime)
             # Native codec write/read covers the actual bundled video decoder.
             video = scratch / 'codec test.avi'
             writer = cv2.VideoWriter(str(video), cv2.VideoWriter_fourcc(*'MJPG'), 10, (96,64))
@@ -95,9 +129,11 @@ def main(argv=None) -> int:
             if photo.width() != 16:
                 raise RuntimeError('Pillow/Tk photo bridge failed')
             app.start('selftest')
+            seen_results = set()
             deadline = time.monotonic()+args.seconds
             while time.monotonic() < deadline:
                 root.update()
+                _observe_current_result(app.analysis, seen_results)
                 if errors:
                     raise RuntimeError(errors[-1])
                 time.sleep(.01)
@@ -105,8 +141,9 @@ def main(argv=None) -> int:
             report['checks']['analysis'] = app.analysis.snapshot()
             report['checks']['preview'] = app.preview.snapshot()
             report['checks']['gui_painted_frames'] = window.painted_frames
-            if app.analysis.processed < 2 or app.analysis.latest() is None:
-                raise RuntimeError('Frozen neural worker did not produce two real results')
+            report['checks']['fresh_neural_results_observed'] = len(seen_results)
+            if app.analysis.processed < 2 or len(seen_results) < 2:
+                raise RuntimeError('Frozen neural worker did not produce two observable fresh results')
             if app.preview.frames < 2 or window.painted_frames < 2:
                 raise RuntimeError('Native preview failed to render')
             if report['checks']['analysis']['state'] == 'ERROR':
@@ -121,16 +158,19 @@ def main(argv=None) -> int:
             if app.analysis is not None or app.preview.frames <= preview_before:
                 raise RuntimeError('Pausing analysis interrupted the live preview')
             app.resume_analysis()
+            resumed_results = set()
             end = time.monotonic() + 20
             while time.monotonic() < end:
                 root.update(); time.sleep(.01)
                 if errors:
                     raise RuntimeError(errors[-1])
-                if app.analysis.processed >= 2 and app.analysis.latest() is not None:
+                _observe_current_result(app.analysis, resumed_results)
+                if len(resumed_results) >= 2:
                     break
             if (app.camera.snapshot()['worker_pid'] != camera_pid or
-                    app.analysis.processed < 2 or app.analysis.latest() is None):
+                    app.analysis.processed < 2 or len(resumed_results) < 2):
                 raise RuntimeError('Analysis resume failed or reconnected the camera')
+            report['checks']['fresh_neural_results_after_resume'] = len(resumed_results)
             report['checks']['pause_resume_keeps_camera'] = True
             eid = app.photo()
             if not app.evidence.flush(10) or not (scratch/'data'/'evidence'/eid/'evento.json').is_file():
@@ -146,9 +186,6 @@ def main(argv=None) -> int:
                 tool_command('validate-dataset', '--help'), scratch/'tool.log', timeout=60)
             if 'manifest' not in (scratch/'tool.log').read_text(encoding='utf-8', errors='replace'):
                 raise RuntimeError('Internal evaluator command/log channel failed')
-            window.closed = True
-            root.destroy(); root = None
-            app.close(); app = None
         report['checks']['shutdown'] = True
         report['checks']['python_network_blocked'] = True
         report['passed'] = True
@@ -156,14 +193,11 @@ def main(argv=None) -> int:
         report['errors'].append(traceback.format_exc())
     finally:
         socket.socket.connect = original_connect
-        if window is not None:
-            window.closed = True
-        if root is not None:
-            try: root.destroy()
-            except Exception: pass
-        if app is not None:
-            try: app.close()
-            except Exception: report['errors'].append(traceback.format_exc()); report['passed'] = False
+        try:
+            cleanup_runtime()
+        except Exception:
+            report['errors'].append(traceback.format_exc())
+            report['passed'] = False
         report['seconds'] = time.monotonic()-began
         args.report = args.report.resolve()
         args.report.parent.mkdir(parents=True, exist_ok=True)

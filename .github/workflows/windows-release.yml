@@ -37,7 +37,8 @@ jobs:
                           break
                       path = pathlib.PurePosixPath(member.name)
                       assert member.isfile() and not path.is_absolute() and '..' not in path.parts and '\\' not in member.name
-                      assert path.parts[0] not in ('.git', '.github', '.bootstrap', 'data', 'models')
+                      assert path.parts[0] not in ('.git', '.github', '.bootstrap', 'data')
+                      assert path.parts[0] != 'models' or member.name in ('models/README.md','models/manifest.json')
                       data = tar.extractfile(member).read()
                       assert len(data) == member.size and len(data) < 2000000
                       dest = root.joinpath(*path.parts)

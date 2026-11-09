@@ -6,5 +6,13 @@
   "model_changed": false,
   "accuracy_measured": false,
   "physical_camera_tested": false,
-  "validation_source": "GitHub Actions per-build validation artifact, not old historical reports"
+  "validation_source": "GitHub Actions per-build validation artifact, not old historical reports",
+  "windows_validation_run": 42661851964,
+  "binary_source_commit": "283aaaf819d032437e6208f6cb0575cabdbe08a5",
+  "windows_tests_passed": 280,
+  "windows_tests_skipped": 0,
+  "portable_verified": true,
+  "installer_verified": true,
+  "external_python_removed_from_path": true,
+  "signed_authenticode": false
 }

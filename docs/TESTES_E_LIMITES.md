@@ -1,33 +1,57 @@
-# CamCraft 4.2 — critérios de validação
+# CamCraft 4.2.0 — testes executados e limites
 
-Esta versão empacota a base 4.1 para Windows. Os números de versões anteriores estão nos documentos históricos, não são atribuídos automaticamente a este build.
+## Release Windows publicada
 
-## Gates do workflow Windows
+- Run: https://github.com/DragonBlack18/CamCraft/actions/runs/42661851964
+- Código compilado: `283aaaf819d032437e6208f6cb0575cabdbe08a5`.
+- Ambiente: GitHub Actions, Windows Server 2022 x64, Python 3.12.10.
+- Regressão: **280 aprovados, zero ignorados, zero falhas**, em 78,456 s.
+- Dependências instaladas em `.build-venv` limpa; `pip check` aprovado e somente `opencv-python-headless` fornecendo `cv2`.
+- Modelo oficial YOLOX-S incluído: hash conferido e inferência neural real executada.
+- Auditoria nativa: 187 arquivos PE examinados; nenhum runtime MSVC necessário ausente do pacote; Python, Tk, FFmpeg e modelo presentes.
 
-1. Ambiente virtual isolado e dependências fixadas; `pip check` e exatamente uma distribuição que fornece `cv2`.
-2. Obtenção do modelo oficial, tamanho/SHA-256 e inferência real antes de compilar. Modelo obrigatório: não se publica um EXE sem pesos para baixá-los depois.
-3. Suíte de regressão, incluindo caminhos do modo portátil/instalado, subprocessos internos e funcionalidades anteriores.
-4. Auditoria de payload nativo: Python, Tk, FFmpeg e DLLs MSVC app-local requeridas.
-5. Executável onedir, portátil (copiado sozinho para uma pasta com espaços) e aplicativo instalado executados com PATH limitado ao Windows, sem PYTHONPATH/PYTHONHOME.
-6. Self-test real do modelo, codecs, janela Tk, captura e análise em processos filhos, prévia, foto/SQLite, pausa/retomada, encerramento e comando interno de avaliação.
-7. Instalação silenciosa, execução, desinstalação e preservação de arquivo sentinela na pasta de dados.
-8. Hashes SHA-256 e relatório anexado à Release somente após todos os passos anteriores.
+## Testes dos executáveis
 
-O runner contém ferramentas de desenvolvimento, mas os EXEs são testados com Python fora do PATH. Isso é evidência de empacotamento, não equivale a uma VM de consumidor sem nenhum runtime instalado. Há guarda de sockets Python no self-test; não é uma prova de isolamento de rede de todo o sistema operacional. A aquisição sintética não testa uma webcam física.
+| Verificação | Onedir (base do Setup) | Portátil isolado | EXE instalado |
+|---|---|---|---|
+| Resultado | PASS | PASS | PASS |
+| Python externo fora do PATH | Sim | Sim | Sim |
+| Inferência com o modelo real | PASS | PASS | PASS |
+| Resultados neurais recentes observados antes da pausa | 16 | 15 | 15 |
+| Retomada da IA mantendo o PID da câmera | PASS | PASS | PASS |
+| Janela nativa e prévia desenhadas | PASS | PASS | PASS |
+| Decoder/encoder MJPG e FFmpeg | PASS | PASS | PASS |
+| Foto, SQLite e ferramenta interna empacotada | PASS | PASS | PASS |
+| Encerramento e limpeza dos temporários | PASS | PASS | PASS |
 
-## Resultados por build
+O portátil foi copiado sozinho para uma pasta nova com espaços no caminho. Não havia projeto, scripts Python ou modelo externo ao lado dele.
 
-Consulte `CamCraft-4.2.0-validation.zip` na Release e o workflow correspondente. Ele contém JUnit dos testes, auditoria de DLLs, inventário de bibliotecas e os relatórios JSON dos executáveis/instalador. O workflow falha antes de publicar quando qualquer gate falha. Os logs do Actions registram também correções ou tentativas que não passaram.
+O Setup foi instalado silenciosamente e o aplicativo instalado foi executado. A desinstalação removeu o programa e preservou um arquivo-sentinela na pasta persistente de dados. Todas as verificações do instalador passaram.
 
-## Não validado por esses gates
+Durante a validação foram corrigidos o bloqueio obrigatório de arquivos no Windows, a limpeza de temporários antes do fechamento do banco e uma amostragem pontual incorreta do autoteste. O teste agora exige dois resultados neurais distintos e recentes observados durante a execução, mantendo o descarte de resultados antigos.
 
-Acurácia em pessoas encobertas, gravações do quarto do usuário, todos os modelos de webcam/DVR, longa duração em produção, Windows 10/11 em todos os drivers, reconhecimento de autoria, CUDA/RTX e assinatura digital de executáveis. Compilação não altera os pesos nem treina o modelo.
+## O que não foi validado
 
-## Referências técnicas
+- Nenhuma câmera física do usuário foi conectada ao runner.
+- Imagens sintéticas/neutras verificam execução, não precisão em pessoas ou objetos reais.
+- Não houve treinamento com o quarto do usuário nem medição de acurácia dessa câmera.
+- O runner possui Python instalado; os testes retiraram-no do PATH e verificaram a execução congelada. Não equivalem a uma VM doméstica sem qualquer software prévio.
+- O autoteste bloqueia chamadas Python de conexão no processo principal; não é um bloqueio de rede de todos os processos pelo firewall. A aplicação empacotada exige o modelo incluído e não o baixa em execução.
+- Não houve teste contínuo de dias, homologação de todo driver, CUDA ou assinatura Authenticode.
 
-- PyInstaller: https://pyinstaller.org/en/stable/common-issues-and-pitfalls.html
-- PyInstaller operating mode: https://pyinstaller.org/en/stable/operating-mode.html
-- Inno Setup: https://jrsoftware.org/ishelp/topic_setup_privilegesrequired.htm
-- Modelo: https://github.com/opencv/opencv_zoo/tree/main/models/object_detection_yolox
+Os testes de integração duraram aproximadamente 21–25 segundos cada, com fonte sintética 640×480. Não apresentam uma promessa de FPS ou atraso na câmera do usuário. A inferência permanece em CPU.
 
-Relatórios são evidências de execução, não certificação de segurança/precisão.
+## Evidências reproduzíveis
+
+Release: https://github.com/DragonBlack18/CamCraft/releases/tag/v4.2.0
+
+`CamCraft-4.2.0-validation.zip` contém XML da regressão, inventário de dependências, auditoria nativa e relatórios JSON dos três modos e do instalador, além dos logs do Setup.
+
+SHA-256 do ZIP de validação:
+`752ca871015f26e024d196a5880ddd3a92f2dd18213648e1ad73d931c66e49d7`.
+
+Portátil: `6b2fa76ec5f63e5b18cc29a7ec885a671be74ba5913f1694fc36e6cccd73acc7`.
+
+Setup: `1f26cc0534ab8a02681ba3c3a26d788d2ba9a248d1b129ee646c7747e8805790`.
+
+Não confunda os relatórios históricos das fases anteriores com esta execução. Em Linux, a repetição final local teve 279 aprovados e um ignorado por ausência local do modelo; a aprovação Windows acima executou também esse teste.

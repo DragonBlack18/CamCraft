@@ -1,0 +1,110 @@
+name: CamCraft Windows executables
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: camcraft-windows-release
+  cancel-in-progress: false
+
+jobs:
+  windows:
+    runs-on: windows-2022
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12.10'
+          architecture: x64
+      - name: Import verified full source when initializing repository
+        if: ${{ hashFiles('packaging/build_windows.ps1') == '' }}
+        shell: python
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          import base64, hashlib, io, lzma, os, pathlib, subprocess, tarfile, urllib.request, json
+          shas = '''ae6f814a732b43561fc2d81f054e601e240e890c c1ac2839f7a39860877c26b271f28ea279c02572 36a9a2d96f4494ffec51e04e6cb624b497ff48ce adb6a7013e8cebc810130409cb21ad3020c5994c 77449702bb515a23f0db36af9eaa36344ac2b06a f10cec6485250ce6579fb0b2112d62b32261b133 3512663972e00e90285ef43aa67052a96e56da6d c27a784979ed577b5e04e7aaf32861aef4d0ee0f 1cdae5f71bb89739f24513e8f53f00e649ce3de9 5dc63c8b3f0b079b075c24da3fa057a235310245 c2b4a0b21c67556823c6996a66752587da928f26 c2c63bcf949c495068b251fbf900277d411422ee a1d7f10ed5c83a30b42293b794ce0968397113b2 a588d6f42bfc6b76ed0a71d1514b3544088712a5 a155622331003090657da027628b6ef415ff33ce 45e87068dbb8a80931f47fa57e3c3509a803587a'''.split()
+          parts = []
+          for sha in shas:
+              req = urllib.request.Request(f'https://api.github.com/repos/DragonBlack18/CamCraft/git/blobs/{sha}', headers={'Authorization': 'Bearer ' + os.environ['GH_TOKEN'], 'Accept': 'application/vnd.github+json', 'User-Agent': 'CamCraft-source-import'})
+              with urllib.request.urlopen(req, timeout=60) as response:
+                  item = json.load(response)
+              assert item['sha'] == sha and item['encoding'] == 'base64'
+              part = base64.b64decode(item['content'])
+              assert len(part) <= 16000
+              assert hashlib.sha1(b'blob ' + str(len(part)).encode() + b'\0' + part).hexdigest() == sha
+              parts.append(part)
+          archive = base64.b64decode(b''.join(parts), validate=True)
+          assert len(archive) == 190652
+          assert hashlib.sha256(archive).hexdigest() == 'aa481270dd416bb3ec62bb22a0ec818141fccef972d2ebf0bf19cbb2887221a4'
+          raw = lzma.decompress(archive)
+          assert len(raw) == 808960
+          root = pathlib.Path.cwd().resolve()
+          with tarfile.open(fileobj=io.BytesIO(raw), mode='r:') as tar:
+              members = tar.getmembers()
+              assert len(members) == 147
+              for member in members:
+                  path = pathlib.PurePosixPath(member.name)
+                  assert member.isfile() and not path.is_absolute()
+                  assert '..' not in path.parts and '\\' not in member.name
+                  assert path.parts[0] not in ('.git', '.github', '.bootstrap', 'data', 'models')
+                  dest = root.joinpath(*path.parts)
+                  dest.parent.mkdir(parents=True, exist_ok=True)
+                  content = tar.extractfile(member).read()
+                  assert len(content) == member.size and len(content) < 2000000
+                  dest.write_bytes(content)
+          subprocess.run(['git', 'config', 'user.name', 'github-actions[bot]'], check=True)
+          subprocess.run(['git', 'config', 'user.email', '41898282+github-actions[bot]@users.noreply.github.com'], check=True)
+          subprocess.run(['git', 'add', '-A'], check=True)
+          subprocess.run(['git', 'commit', '-m', 'feat: import full CamCraft 4.2.0 source with standalone Windows packaging'], check=True)
+          subprocess.run(['git', 'push', 'origin', 'HEAD:main'], check=True)
+      - name: Prepare isolated build environment
+        shell: pwsh
+        run: |
+          python -m venv .build-venv
+          if ($LASTEXITCODE -ne 0) { throw 'Could not create build environment' }
+          & .\.build-venv\Scripts\python.exe -m pip install --only-binary=:all: -r packaging\requirements-build.txt
+          if ($LASTEXITCODE -ne 0) { throw 'Dependency installation failed' }
+          & .\.build-venv\Scripts\python.exe -m pip check
+          if ($LASTEXITCODE -ne 0) { throw 'Dependency check failed' }
+      - name: Build and test portable EXE and Windows Setup
+        shell: pwsh
+        run: |
+          & .\packaging\build_windows.ps1 -PythonPath (Join-Path $PWD '.build-venv\Scripts\python.exe')
+          if ($LASTEXITCODE -ne 0) { throw 'Windows distribution validation failed' }
+      - name: Preserve validation reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: camcraft-windows-validation
+          path: |
+            build/reports/**
+            .build_assets/**/reports/**
+            release/*validation*.zip
+          if-no-files-found: warn
+      - name: Preserve verified distributions
+        uses: actions/upload-artifact@v4
+        with:
+          name: CamCraft-Windows-x64
+          path: release/*
+          if-no-files-found: error
+      - name: Publish verified release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $version = (Get-Content VERSION -Raw).Trim()
+          if ($version -notmatch '^\d+\.\d+\.\d+$') { throw 'Invalid version' }
+          $portable = Join-Path $PWD "release\CamCraft-Portable-$version-x64.exe"
+          $setup = Join-Path $PWD "release\CamCraft-Setup-$version-x64.exe"
+          if (!(Test-Path $portable) -or !(Test-Path $setup)) { throw 'Both executables are required' }
+          $assets = @(Get-ChildItem release -File | ForEach-Object { $_.FullName })
+          $commit = (git rev-parse HEAD).Trim()
+          gh release create "v$version" @assets --repo DragonBlack18/CamCraft --target $commit --title "CamCraft $version — Windows x64" --notes-file packaging/release_notes.md
+          if ($LASTEXITCODE -ne 0) { throw 'Release publication failed' }

@@ -1,0 +1,14 @@
+{
+  "filename": "object_detection_yolox_2022nov.onnx",
+  "size": 35858002,
+  "sha256": "c5c2d13e59ae883e6af3b45daea64af4833a4951c92d116ec270d9ddbe998063",
+  "download_urls": [
+    "https://media.githubusercontent.com/media/opencv/opencv_zoo/main/models/object_detection_yolox/object_detection_yolox_2022nov.onnx",
+    "https://github.com/opencv/opencv_zoo/raw/refs/heads/main/models/object_detection_yolox/object_detection_yolox_2022nov.onnx",
+    "https://huggingface.co/opencv/opencv_zoo/resolve/main/models/object_detection_yolox/object_detection_yolox_2022nov.onnx"
+  ],
+  "included_in_zip": false,
+  "license": "Apache-2.0",
+  "preprocess": "RGB float32 0..255; top-left letterbox 114; 640x640",
+  "output": "1x8400x85; decode grids/strides in adapter"
+}

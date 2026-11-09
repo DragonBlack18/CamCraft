@@ -1,0 +1,12 @@
+CamCraft 4.2.0
+
+Para usar sem dependencias: baixe o Portatil ou o Setup em
+https://github.com/DragonBlack18/CamCraft/releases
+
+Os arquivos INICIAR.cmd e INICIAR.ps1 deste codigo-fonte sao apenas para desenvolvimento.
+Os executaveis da Release ja incluem Python, bibliotecas e modelo de IA.
+
+Portatil: dados em CamCraft-data ao lado do EXE.
+Setup: dados em %LOCALAPPDATA%\CamCraft\data.
+
+Consulte README.md e docs/WINDOWS.md.

@@ -1,0 +1,21 @@
+.venv/
+.runtime/
+data/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+models/*.onnx
+models/*.download
+*.sqlite3*
+.env
+
+# Build outputs and private/generated runtime material
+.build-venv/
+.build_assets/
+build/
+dist/
+release/
+CamCraft-data/
+.bootstrap/
+docs/validation/
+*.onnx

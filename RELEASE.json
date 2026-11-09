@@ -1,0 +1,10 @@
+{
+  "application": "CamCraft",
+  "version": "4.2.0",
+  "based_on": "Vision Local 4.1.0",
+  "scope": "Standalone Windows portable and per-user installer; bundled verified neural model",
+  "model_changed": false,
+  "accuracy_measured": false,
+  "physical_camera_tested": false,
+  "validation_source": "GitHub Actions per-build validation artifact, not old historical reports"
+}

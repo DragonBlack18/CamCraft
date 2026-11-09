@@ -1,0 +1,14 @@
+CamCraft — instalação independente para Windows x64
+
+Python, OpenCV, bibliotecas, interface gráfica e modelo YOLOX estão incluídos.
+Não é necessário instalar Python, usar terminal ou baixar modelo para abrir o aplicativo.
+
+A instalação é por usuário e não precisa de administrador. Os registros e imagens ficam em:
+%LOCALAPPDATA%\CamCraft\data
+
+A desinstalação remove o programa, mas preserva seus registros e evidências.
+Não há reconhecimento facial nem conclusão automática de furto. Revise as ocorrências.
+O desempenho e a precisão dependem da câmera e do computador.
+
+Os executáveis desta distribuição não possuem certificado de assinatura de código.
+Verifique a origem e o SHA-256 antes de executar. Não desative proteções de segurança.

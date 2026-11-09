@@ -1,0 +1,23 @@
+{
+  "version": "4.1.0",
+  "date": "2026-11-09",
+  "based_on": "Vision Local Fase 4 v4.0.0",
+  "scope": "Independent live preview, conservative class policy, native controls, bounded temporal confirmation",
+  "model_changed": false,
+  "neural_accuracy_measured": false,
+  "windows_tested": false,
+  "real_camera_tested": false,
+  "validation": {
+    "tests_passed": 267,
+    "tests_skipped": 1,
+    "test_seconds": 74.49,
+    "fresh_path": true,
+    "neural_skipped": true,
+    "clean_dependency_check": "FAIL: two OpenCV package distributions in provided environment",
+    "native_gui_synthetic_cpu_stress": {
+      "seconds": 45.01483304399994,
+      "painted_fps": 28.257352387749126,
+      "simulated_analysis_fps": 1.3995386795819142
+    }
+  }
+}
